@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Casa Anderson</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#000000">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -663,7 +667,7 @@ function quickAuth(){
 function T(i,t){
   const el=document.getElementById('toast');
   document.getElementById('ti').innerHTML=i;
-  document.getElementById('tt').innerHTML=t;
+  document.getElementById('tt').textContent=t;
   el.classList.add('show');
   if(ttmr)clearTimeout(ttmr);
   ttmr=setTimeout(()=>el.classList.remove('show'),2200);
@@ -673,12 +677,12 @@ function T(i,t){
  * Troque BACKEND pelo endereço do seu servidor quando publicar online,  *
  * ex: 'https://amb-casa-anderson.railway.app'                          *
  * Se o backend estiver fora do ar, o app cai sozinho em modo demonstração. */
-const BACKEND = 'https://amb-casa-anderson-production-f8bc.up.railway.app';
+const BACKEND = 'http://localhost:8000';
 let backendOnline = null;
 
 async function checkBackend(){
   try{
-    const r = await fetch(BACKEND+'/', {method:'GET', signal: AbortSignal.timeout(6000)});
+    const r = await fetch(BACKEND+'/', {method:'GET', signal: AbortSignal.timeout(1500)});
     backendOnline = r.ok;
   }catch(e){ backendOnline = false; }
   const dot = document.getElementById('hlivedot0'), lbl = document.getElementById('hlivelbl0');
@@ -821,6 +825,10 @@ function tick(){
   if(g)g.textContent=hr<12?'Bom dia':hr<18?'Boa tarde':'Boa noite';
 }
 tick();setInterval(tick,30000);
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
 </script>
 </body>
 </html>
