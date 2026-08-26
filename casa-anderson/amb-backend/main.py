@@ -19,7 +19,7 @@ from tuya_service import tuya
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("amb")
 
-app = FastAPI(title="AMB — Casa Barbosa", version="1.1.0")
+app = FastAPI(title="AMB — Casa Barbosa", version="1.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -171,6 +171,27 @@ def device_status(device_id: str):
         raise HTTPException(502, f"Falha ao comunicar com a Tuya: {e}")
 
 
+# ── Diagnóstico: mostra os códigos DP reais que um dispositivo reporta ──────
+# Útil pra investigar qualquer dispositivo que não responder no futuro,
+# sem precisar mexer em código: GET /devices/{device_id}/codes
+@app.get("/devices/{device_id}/codes")
+def device_codes(device_id: str):
+    dev = DEVICES.get(device_id)
+    if not dev:
+        raise HTTPException(404, "Dispositivo não encontrado")
+    try:
+        status = tuya.get_device_status(dev["tuya_id"])
+        return {
+            "device_id": device_id,
+            "name": dev["name"],
+            "codes_disponiveis": [item.get("code") for item in status],
+            "status_completo": status,
+        }
+    except Exception as e:
+        logger.exception("Erro lendo códigos do dispositivo %s", device_id)
+        raise HTTPException(502, f"Falha ao comunicar com a Tuya: {e}")
+
+
 @app.get("/status/all")
 def all_status():
     result = {}
@@ -190,17 +211,8 @@ def switch_device(cmd: SwitchCmd):
     if not dev:
         raise HTTPException(404, "Dispositivo não encontrado")
 
-    type_codes = {
-        "switch": "switch_led",
-        "dimmer": "switch_led",
-        "plug": "switch",
-        "lock": "switch",
-        "alarm": "switch",
-        "feeder": "switch",
-    }
-    code = type_codes.get(dev["type"], "switch_led")
-
     try:
+        code = tuya.resolve_switch_code(dev["tuya_id"])
         ok = tuya.send_command(
             dev["tuya_id"],
             [{"code": code, "value": cmd.value}],
@@ -209,7 +221,7 @@ def switch_device(cmd: SwitchCmd):
         logger.exception("Erro no /switch device=%s", cmd.device_id)
         raise HTTPException(502, f"Falha ao comunicar com a Tuya: {e}")
 
-    return {"success": ok, "device": dev["name"], "value": cmd.value}
+    return {"success": ok, "device": dev["name"], "value": cmd.value, "code_usado": code}
 
 
 @app.post("/dimmer")
@@ -224,18 +236,23 @@ def set_dimmer(cmd: DimmerCmd):
         raise HTTPException(400, "brightness deve estar entre 0 e 100")
 
     tuya_brightness = int(cmd.brightness * 10)
-    commands = [
-        {"code": "switch_led", "value": True},
-        {"code": "bright_value_v2", "value": tuya_brightness},
-    ]
 
     try:
+        switch_code = tuya.resolve_switch_code(dev["tuya_id"])
+        bright_code = tuya.resolve_brightness_code(dev["tuya_id"])
+        commands = [
+            {"code": switch_code, "value": True},
+            {"code": bright_code, "value": tuya_brightness},
+        ]
         ok = tuya.send_command(dev["tuya_id"], commands)
     except Exception as e:
         logger.exception("Erro no /dimmer device=%s", cmd.device_id)
         raise HTTPException(502, f"Falha ao comunicar com a Tuya: {e}")
 
-    return {"success": ok, "device": dev["name"], "brightness": cmd.brightness}
+    return {
+        "success": ok, "device": dev["name"], "brightness": cmd.brightness,
+        "codes_usados": {"switch": switch_code, "brightness": bright_code},
+    }
 
 
 @app.post("/blind")
@@ -295,7 +312,7 @@ def trigger_scene(cmd: SceneCmd):
             if action["cmd"] == "blind":
                 commands = [{"code": "control", "value": action["value"]}]
             elif action["cmd"] == "switch":
-                code = "switch" if dev["type"] == "plug" else "switch_led"
+                code = tuya.resolve_switch_code(dev["tuya_id"])
                 commands = [{"code": code, "value": action["value"]}]
             elif action["cmd"] == "feed":
                 commands = [{"code": "manual_feed", "value": action["value"]}]
