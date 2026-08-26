@@ -32,7 +32,7 @@ class TuyaService:
     # e para "intensidade". Em vez de adivinhar por tipo de dispositivo,
     # consultamos o status real do device e usamos o código que ele reporta.
     SWITCH_CODE_CANDIDATES = [
-        "switch_led", "switch_1", "switch", "switch_neon",
+        "switch_led", "switch_led_1", "switch_1", "switch", "switch_neon",
         "switch_countdown", "light", "switch_usb1",
     ]
     BRIGHTNESS_CODE_CANDIDATES = [
