@@ -27,6 +27,18 @@ class TuyaAPIError(Exception):
 
 
 class TuyaService:
+    # ── Candidatos de código DP, em ordem de prioridade ─────────────────────
+    # Cada categoria/modelo Tuya usa um nome diferente para "ligar/desligar"
+    # e para "intensidade". Em vez de adivinhar por tipo de dispositivo,
+    # consultamos o status real do device e usamos o código que ele reporta.
+    SWITCH_CODE_CANDIDATES = [
+        "switch_led", "switch_1", "switch", "switch_neon",
+        "switch_countdown", "light", "switch_usb1",
+    ]
+    BRIGHTNESS_CODE_CANDIDATES = [
+        "bright_value_v2", "bright_value", "bright_value_v1",
+    ]
+
     def __init__(self):
         self.client_id = self._required_env("TUYA_CLIENT_ID")
         self.secret = self._required_env("TUYA_SECRET")
@@ -215,6 +227,44 @@ class TuyaService:
         path = f"/v1.0/devices/{device_id}/status"
         data = self._request("GET", path, token=token)
         return data.get("result") or []
+
+    # ── Descobre o código DP correto de "ligar/desligar" do dispositivo ─────
+    def resolve_switch_code(self, device_id: str) -> str:
+        """
+        Cada categoria de dispositivo Tuya usa um nome de código diferente
+        pra ligar/desligar (switch_led, switch_1, switch...). Em vez de
+        adivinhar, consultamos o status atual do dispositivo e usamos
+        o código que ele realmente reporta.
+        """
+        try:
+            status = self.get_device_status(device_id)
+            codes_disponiveis = {item.get("code") for item in status}
+            for candidato in self.SWITCH_CODE_CANDIDATES:
+                if candidato in codes_disponiveis:
+                    return candidato
+            logger.warning(
+                "Nenhum código de switch conhecido encontrado para %s. "
+                "Códigos disponíveis: %s", device_id, codes_disponiveis
+            )
+        except Exception:
+            logger.exception("Falha ao resolver switch code de %s", device_id)
+        return "switch_1"  # fallback mais comum em interruptores de parede
+
+    # ── Descobre o código DP correto de "intensidade" (dimmer/LED) ──────────
+    def resolve_brightness_code(self, device_id: str) -> str:
+        try:
+            status = self.get_device_status(device_id)
+            codes_disponiveis = {item.get("code") for item in status}
+            for candidato in self.BRIGHTNESS_CODE_CANDIDATES:
+                if candidato in codes_disponiveis:
+                    return candidato
+            logger.warning(
+                "Nenhum código de brilho conhecido encontrado para %s. "
+                "Códigos disponíveis: %s", device_id, codes_disponiveis
+            )
+        except Exception:
+            logger.exception("Falha ao resolver brightness code de %s", device_id)
+        return "bright_value_v2"  # fallback mais comum
 
     def send_command(self, device_id: str, commands: list) -> bool:
         token = self.get_token()
